@@ -1,9 +1,9 @@
 from rest_framework import serializers
-from .models import Task
+from .models import Task, Category
 
 class TaskSerializer(serializers.ModelSerializer):
 
-    owner = serializers.ReadOnlyField(source="owner.usernamze")
+    owner = serializers.ReadOnlyField(source="owner.username")
 
     class Meta:
         model = Task
@@ -12,6 +12,11 @@ class TaskSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "category",
+            "attachment",
+            "priority",
+            "status",
+            "due_date",
             "completed",
             "created_at",
             "updated_at",
@@ -23,3 +28,8 @@ class TaskSerializer(serializers.ModelSerializer):
             "updated_at",
             "owner",
         ]
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ["id", "name"]
