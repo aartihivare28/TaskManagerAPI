@@ -1,19 +1,18 @@
+from .permissions import IsOwnerOrAdmin
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import Task
 from .serializers import TaskSerializer
-from .permissions import IsOwnerOrReadOnly
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Count
 from datetime import timedelta
 from django.utils import timezone
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
 
     filter_backends=[
         DjangoFilterBackend,
