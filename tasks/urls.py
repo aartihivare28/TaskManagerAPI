@@ -1,13 +1,12 @@
 from rest_framework.routers import DefaultRouter
-from .views import (TaskViewSet, 
-                    DashboardView,
-                    UpcomingTaskView,
-)
+from .views import TaskViewSet, ProjectViewSet , DashboardView, UpcomingTaskView
 from django.urls import path, include
 
 router = DefaultRouter()
 
 router.register(r"tasks", TaskViewSet, basename="task")
+router.register(r"projects", ProjectViewSet, basename="project")
+
 
 urlpatterns = [
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
