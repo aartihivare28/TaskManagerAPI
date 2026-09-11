@@ -1,7 +1,7 @@
 from .permissions import IsOwnerOrAdmin
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
+# from rest_framework.permissions import AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db import transaction
@@ -11,10 +11,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from datetime import timedelta
 from django.utils import timezone
+from rest_framework.permissions import IsAuthenticated
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
-    permission_classes = [AllowAny, IsOwnerOrAdmin]
+    permission_classes = [IsAuthenticated]
 
     filter_backends=[
         DjangoFilterBackend,
@@ -56,7 +57,7 @@ class TaskViewSet(viewsets.ModelViewSet):
 
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         if not self.request.user.is_authenticated:
@@ -106,7 +107,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
 
 class DashboardView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         tasks = Task.objects.filter(owner=request.user)
@@ -125,7 +126,7 @@ class DashboardView(APIView):
     
 
 class UpcomingTaskView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         today = timezone.now().date()
