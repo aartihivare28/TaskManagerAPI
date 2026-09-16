@@ -5,17 +5,28 @@ from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db import transaction
-from .models import Task, Project
-from .serializers import TaskSerializer, ProjectSerializer, ProjectWithTaskSerializer
+from .models import Task, Project, SubTask
+from .serializers import TaskSerializer, ProjectSerializer, ProjectWithTaskSerializer, SubTaskSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
+from .filters import TaskFilter, SubTaskFilter
+from django.db.models import Subquery, OuterRef
+
+latest_task = Task.objects.filter(
+    project=OuterRef('pk')
+).order_by('-created_at')
+
+projects = Project.objects.annotate(
+    latest_task_title=Subquery(latest_task.values('title')[:1])
+)
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
+    filterset_class = TaskFilter
 
     filter_backends=[
         DjangoFilterBackend,
@@ -42,7 +53,9 @@ class TaskViewSet(viewsets.ModelViewSet):
     ]
 
     def get_queryset(self):
-        
+        if not self.request.user.is_authenticated:
+            return Project.objects.none()
+
         if self.request.user.is_staff:
             return Task.objects.all().order_by("-created_at")
         
@@ -55,9 +68,23 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         serializer.save(owner=self.request.user)
 
+class SubTaskViewSet(viewsets.ModelViewSet):
+    queryset = SubTask.objects.select_related('task').all()
+    serializer_class = SubTaskSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = SubTaskFilter
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action in ['POST', 'PATCH']: 
+            return ProjectWithTaskSerializer
+        return ProjectSerializer
 
     def get_queryset(self):
         if not self.request.user.is_authenticated:
