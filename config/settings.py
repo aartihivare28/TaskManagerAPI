@@ -40,8 +40,8 @@ INSTALLED_APPS = [
 
     'rest_framework',
     "accounts",
-    "tasks",
     "django_filters",
+    "tasks",
     "drf_spectacular",
 ]
 
