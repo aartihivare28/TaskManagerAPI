@@ -1,34 +1,31 @@
-from .permissions import IsOwnerOrAdmin
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-# from rest_framework.permissions import AllowAny
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.filters import SearchFilter, OrderingFilter
-from django.db import transaction
-from .models import Task, Project, SubTask
-from .serializers import TaskSerializer, ProjectSerializer, ProjectWithTaskSerializer, SubTaskSerializer
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from datetime import timedelta
+from django.db import transaction
 from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
-from .filters import TaskFilter, SubTaskFilter
-from django.db.models import Subquery, OuterRef
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-latest_task = Task.objects.filter(
-    project=OuterRef('pk')
-).order_by('-created_at')
-
-projects = Project.objects.annotate(
-    latest_task_title=Subquery(latest_task.values('title')[:1])
+from .filters import SubTaskFilter, TaskFilter
+from .models import Project, SubTask, Task
+from .permissions import IsOwnerOrAdmin
+from .serializers import (
+    ProjectSerializer,
+    ProjectWithTaskSerializer,
+    SubTaskSerializer,
+    TaskSerializer,
 )
+
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
     filterset_class = TaskFilter
 
-    filter_backends=[
+    filter_backends = [
         DjangoFilterBackend,
         SearchFilter,
         OrderingFilter,
@@ -54,83 +51,100 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         if not self.request.user.is_authenticated:
-            return Project.objects.none()
+            return Task.objects.none()
 
+        qs = Task.objects.prefetch_related("subtasks").select_related("project", "category", "owner")
         if self.request.user.is_staff:
-            return Task.objects.all().order_by("-created_at")
-        
-        return Task.objects.filter(owner=self.request.user).order_by("-created_at")
-    
-    def perform_create(self, serializer):
-        """
-        Automatically assign the logged-in user as owner.
-        """
+            return qs.all().order_by("-created_at")
 
+        return qs.filter(owner=self.request.user).order_by("-created_at")
+
+    def perform_create(self, serializer):
+        """Automatically assign the logged-in user as owner."""
         serializer.save(owner=self.request.user)
+
+    @action(detail=True, methods=["get"], url_path="subtasks")
+    def subtasks(self, request, pk=None):
+        task = self.get_object()
+        subtasks = task.subtasks.all()
+        serializer = SubTaskSerializer(subtasks, many=True, context={"request": request})
+        return Response(serializer.data)
+
 
 class SubTaskViewSet(viewsets.ModelViewSet):
-    queryset = SubTask.objects.select_related('task').all()
     serializer_class = SubTaskSerializer
-    filter_backends = [DjangoFilterBackend]
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
     filterset_class = SubTaskFilter
+    search_fields = ["title"]
+    ordering_fields = ["created_at", "updated_at"]
+
+    def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return SubTask.objects.none()
+
+        qs = SubTask.objects.select_related("task", "owner")
+        if self.request.user.is_staff:
+            return qs.all().order_by("-created_at")
+
+        return qs.filter(owner=self.request.user).order_by("-created_at")
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
 
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
-        if self.action in ['POST', 'PATCH']: 
+        if self.action in ["create", "update", "partial_update"]:
             return ProjectWithTaskSerializer
         return ProjectSerializer
 
     def get_queryset(self):
         if not self.request.user.is_authenticated:
             return Project.objects.none()
-        
+
+        qs = Project.objects.prefetch_related("tasks__subtasks")
         if self.request.user.is_staff:
-            print("inside if")
-            return Project.objects.all().order_by("-created_at")
-        print("outside if")
-        return Project.objects.filter(owner=self.request.user).order_by("-created_at")
-    
+            return qs.all().order_by("-created_at")
+
+        return qs.filter(owner=self.request.user).order_by("-created_at")
+
     def perform_create(self, serializer):
         """Automatically assign the logged-in user as owner."""
         serializer.save(owner=self.request.user)
+
+    @action(detail=True, methods=["get"], url_path="tasks")
+    def tasks(self, request, pk=None):
+        project = self.get_object()
+        tasks = project.tasks.prefetch_related("subtasks").all()
+        serializer = TaskSerializer(tasks, many=True, context={"request": request})
+        return Response(serializer.data)
 
     @action(detail=False, methods=["post"], url_path="create-with-tasks")
     def create_with_tasks(self, request):
         """
         POST /projects/create-with-tasks/
-
-        Creates a Project and any number of Task rows under it in a
-    single request. Example body:
-
-    {
-        "name": "Website Revamp",
-        "description": "Q4 redesign",
-        "tasks": [
-            {"title": "Wireframes", "priority": "High", "due_date": "2026-09-20"},
-            {"title": "Homepage build"},
-            {"title": "QA pass", "status": "Pending"}
-        ]
-    }
-    """
-        
+        Creates a Project and any number of Task rows under it in a single request.
+        """
         serializer = ProjectWithTaskSerializer(
-        data=request.data, context={"request": request}
-    )
+            data=request.data, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
 
         with transaction.atomic():
             project = serializer.save()
 
         return Response(
-            ProjectWithTaskSerializer(project, context={"request":request}).data,
+            ProjectWithTaskSerializer(project, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
-    )
+        )
 
 
 class DashboardView(APIView):
@@ -139,7 +153,7 @@ class DashboardView(APIView):
     def get(self, request):
         tasks = Task.objects.filter(owner=request.user)
 
-        data =  {
+        data = {
             "total_tasks": tasks.count(),
             "completed_tasks": tasks.filter(completed=True).count(),
             "pending_tasks": tasks.filter(status="Pending").count(),
@@ -150,7 +164,7 @@ class DashboardView(APIView):
         }
 
         return Response(data)
-    
+
 
 class UpcomingTaskView(APIView):
     permission_classes = [IsAuthenticated]
@@ -162,10 +176,9 @@ class UpcomingTaskView(APIView):
         tasks = Task.objects.filter(
             owner=request.user,
             due_date__range=[today, next_week],
-            completed = False,
+            completed=False,
         )
 
-        serializer = TaskSerializer(tasks, many=True)
+        serializer = TaskSerializer(tasks, many=True, context={"request": request})
 
         return Response(serializer.data)
-# Create your views here.
