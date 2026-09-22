@@ -1,4 +1,5 @@
 from datetime import timedelta
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -11,12 +12,15 @@ from rest_framework.views import APIView
 from .filters import SubTaskFilter, TaskFilter
 from .models import Project, SubTask, Task
 from .permissions import IsOwnerOrAdmin
+from django.db.models import Count, Q
 from .serializers import (
     ProjectSerializer,
     ProjectWithTaskSerializer,
     SubTaskSerializer,
     TaskSerializer,
 )
+
+User = get_user_model()
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
@@ -72,15 +76,25 @@ class UserTaskStatViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        user_tasks = Task.objects.filter(owner=request.user)
-        data = {
-            "username": request.user.username,
-            "total_tasks": user_tasks.count(),
-            "completed_tasks": user_tasks.filter(completed=True).count(),
-            "pending_tasks": user_tasks.filter(completed=False, status="Pending").count(),
-            "in_progress_tasks": user_tasks.filter(status="In Progress").count()
-        }        
+        users = User.objects.annotate(
+            total_tasks=Count("tasks", distinct=True),
+            completed_tasks=Count("tasks", filter=Q(tasks__completed=True),distinct=True),
+            pending_tasks=Count("tasks", filter=Q(tasks__completed=False, tasks__status="Pending"),distinct=True),
+            in_progress_tasks=Count("tasks", filter=Q(tasks__status="In Progress"),  distinct=True),).order_by("id")
+        
+        data = [
+            {
+                "user_id": user.id,
+                "username": user.username,
+                "total_tasks": user.total_tasks,
+                "completed_tasks": user.completed_tasks,
+                "pending_tasks": user.pending_tasks,
+                "in_progress_tasks": user.in_progress_tasks
+            }
+            for user in users
+        ]
         return Response(data)
+
 
 class SubTaskViewSet(viewsets.ModelViewSet):
     serializer_class = SubTaskSerializer

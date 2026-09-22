@@ -7,7 +7,7 @@ router = DefaultRouter()
 router.register(r"tasks", TaskViewSet, basename="task")
 router.register(r"projects", ProjectViewSet, basename="project")
 router.register(r"subtasks", SubTaskViewSet, basename="subtask")
-router.register(r"user-task-stat-report", UserTaskStatViewSet, basename="user-task-stat-report")
+router.register(r"users-task-stat-report", UserTaskStatViewSet, basename="users-task-stat-report")
 
 urlpatterns = [
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
