@@ -1,5 +1,5 @@
 from rest_framework.routers import DefaultRouter
-from .views import TaskViewSet, ProjectViewSet , DashboardView, UpcomingTaskView, SubTaskViewSet
+from .views import TaskViewSet, ProjectViewSet , DashboardView, UpcomingTaskView, SubTaskViewSet, UserTaskStatViewSet
 from django.urls import path, include
 
 router = DefaultRouter()
@@ -7,6 +7,7 @@ router = DefaultRouter()
 router.register(r"tasks", TaskViewSet, basename="task")
 router.register(r"projects", ProjectViewSet, basename="project")
 router.register(r"subtasks", SubTaskViewSet, basename="subtask")
+router.register(r"user-task-stat-report", UserTaskStatViewSet, basename="user-task-stat-report")
 
 urlpatterns = [
     path("dashboard/", DashboardView.as_view(), name="dashboard"),

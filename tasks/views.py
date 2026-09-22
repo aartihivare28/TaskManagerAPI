@@ -8,7 +8,6 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from .filters import SubTaskFilter, TaskFilter
 from .models import Project, SubTask, Task
 from .permissions import IsOwnerOrAdmin
@@ -18,7 +17,6 @@ from .serializers import (
     SubTaskSerializer,
     TaskSerializer,
 )
-
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
@@ -70,6 +68,19 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = SubTaskSerializer(subtasks, many=True, context={"request": request})
         return Response(serializer.data)
 
+class UserTaskStatViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        user_tasks = Task.objects.filter(owner=request.user)
+        data = {
+            "username": request.user.username,
+            "total_tasks": user_tasks.count(),
+            "completed_tasks": user_tasks.filter(completed=True).count(),
+            "pending_tasks": user_tasks.filter(completed=False, status="Pending").count(),
+            "in_progress_tasks": user_tasks.filter(status="In Progress").count()
+        }        
+        return Response(data)
 
 class SubTaskViewSet(viewsets.ModelViewSet):
     serializer_class = SubTaskSerializer
