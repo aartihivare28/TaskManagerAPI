@@ -95,6 +95,23 @@ class UserTaskStatViewSet(viewsets.ViewSet):
         ]
         return Response(data)
 
+    @action(detail=False, methods=["get"], url_path="overall")
+    def overall(self, request):
+        total_users = User.objects.count()
+        total_tasks = Task.objects.count()
+        completed_tasks = Task.objects.filter(completed=True).count()
+        pending_tasks = Task.objects.filter(completed=False).count()
+        in_progress_tasks = Task.objects.filter(status="In Progress").count()
+
+        data ={
+            "total_users": total_users,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "pending_tasks": pending_tasks,
+            "in_progress_tasks": in_progress_tasks
+        }
+        return Response(data)
+
 
 class SubTaskViewSet(viewsets.ModelViewSet):
     serializer_class = SubTaskSerializer
