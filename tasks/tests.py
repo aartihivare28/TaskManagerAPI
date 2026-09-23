@@ -146,3 +146,39 @@ class TaskAPITest(APITestCase):
         self.assertEqual(t_res.status_code, status.HTTP_200_OK)
         self.assertEqual(len(t_res.data), 1)
         self.assertEqual(t_res.data[0]["title"], "Action Subtask")
+
+    def test_users_task_stat_report(self):
+        user2 = User.objects.create_user(username="bob", password="password123")
+        Task.objects.create(title="User1 Task 1", owner=self.user, completed=True)
+        Task.objects.create(title="User1 Task 2", owner=self.user, completed=False, status="Pending")
+        Task.objects.create(title="User1 Task 3", owner=self.user, completed=False, status="In Progress")
+        Task.objects.create(title="User2 Task 1", owner=user2, completed=True)
+
+        res = self.client.get("/api/users-task-stat-report/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data), 2)
+
+        user1_data = next(item for item in res.data if item["username"] == self.user.username)
+        self.assertEqual(user1_data["total_tasks"], 3)
+        self.assertEqual(user1_data["completed_tasks"], 1)
+        self.assertEqual(user1_data["pending_tasks"], 1)
+        self.assertEqual(user1_data["in_progress_tasks"], 1)
+
+        user2_data = next(item for item in res.data if item["username"] == "bob")
+        self.assertEqual(user2_data["total_tasks"], 1)
+        self.assertEqual(user2_data["completed_tasks"], 1)
+        self.assertEqual(user2_data["pending_tasks"], 0)
+        self.assertEqual(user2_data["in_progress_tasks"], 0)
+
+        # Retrieve specific user
+        detail_res = self.client.get(f"/api/users-task-stat-report/{self.user.id}/")
+        self.assertEqual(detail_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail_res.data["total_tasks"], 3)
+
+        # Overall summary
+        overall_res = self.client.get("/api/users-task-stat-report/overall/")
+        self.assertEqual(overall_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(overall_res.data["total_users"], 2)
+        self.assertEqual(overall_res.data["total_tasks"], 4)
+        self.assertEqual(overall_res.data["completed_tasks"], 2)
+

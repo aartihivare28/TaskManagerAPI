@@ -1,4 +1,5 @@
 from datetime import timedelta
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -8,10 +9,10 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from .filters import SubTaskFilter, TaskFilter
 from .models import Project, SubTask, Task
 from .permissions import IsOwnerOrAdmin
+from django.db.models import Count, Q
 from .serializers import (
     ProjectSerializer,
     ProjectWithTaskSerializer,
@@ -19,6 +20,7 @@ from .serializers import (
     TaskSerializer,
 )
 
+User = get_user_model()
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
@@ -69,6 +71,46 @@ class TaskViewSet(viewsets.ModelViewSet):
         subtasks = task.subtasks.all()
         serializer = SubTaskSerializer(subtasks, many=True, context={"request": request})
         return Response(serializer.data)
+
+class UserTaskStatViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        users = User.objects.annotate(
+            total_tasks=Count("tasks", distinct=True),
+            completed_tasks=Count("tasks", filter=Q(tasks__completed=True),distinct=True),
+            pending_tasks=Count("tasks", filter=Q(tasks__completed=False, tasks__status="Pending"),distinct=True),
+            in_progress_tasks=Count("tasks", filter=Q(tasks__status="In Progress"),  distinct=True),).order_by("id")
+        
+        data = [
+            {
+                "user_id": user.id,
+                "username": user.username,
+                "total_tasks": user.total_tasks,
+                "completed_tasks": user.completed_tasks,
+                "pending_tasks": user.pending_tasks,
+                "in_progress_tasks": user.in_progress_tasks
+            }
+            for user in users
+        ]
+        return Response(data)
+
+    @action(detail=False, methods=["get"], url_path="overall")
+    def overall(self, request):
+        total_users = User.objects.count()
+        total_tasks = Task.objects.count()
+        completed_tasks = Task.objects.filter(completed=True).count()
+        pending_tasks = Task.objects.filter(completed=False).count()
+        in_progress_tasks = Task.objects.filter(status="In Progress").count()
+
+        data ={
+            "total_users": total_users,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "pending_tasks": pending_tasks,
+            "in_progress_tasks": in_progress_tasks
+        }
+        return Response(data)
 
 
 class SubTaskViewSet(viewsets.ModelViewSet):
