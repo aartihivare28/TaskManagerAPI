@@ -12,7 +12,9 @@ from rest_framework.views import APIView
 from .filters import SubTaskFilter, TaskFilter
 from .models import Project, SubTask, Task
 from .permissions import IsOwnerOrAdmin
-from django.db.models import Count, Q
+from django.db.models import Q, Count, OuterRef, Subquery
+from django.db.models.functions import Coalesce
+
 from .serializers import (
     ProjectSerializer,
     ProjectWithTaskSerializer,
@@ -72,6 +74,34 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = SubTaskSerializer(subtasks, many=True, context={"request": request})
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path="title")
+    def titles(self, request):
+        titles = self.get_queryset().values_list("title", flat=True)
+        return Response(list(titles))
+
+    @action(detail=False, methods=["get"], url_path="pending")
+    def pending(self, request):
+        tasks = self.get_queryset().filter(completed=False)
+        serializer = self.get_serializer(tasks, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="duplicate_tasks")
+    def duplicate_tasks(self, request):
+        duplicates=(
+            Task.objects.filter(owner=request.user)
+            .values("title")
+            .annotate(count=Count("id"))
+            .filter(count__gt=1)
+            )
+        return Response(list(duplicates))
+
+    @action(detail=False, methods=["get"], url_path="no-due-date")
+    def no_due_date(self, request):
+        tasks = self.get_queryset().filter(due_date=None).order_by("-created_at")
+        serializer = self.get_serializer(tasks, many=True)
+        return Response(serializer.data)
+    
+
 class UserTaskStatViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
@@ -103,12 +133,19 @@ class UserTaskStatViewSet(viewsets.ViewSet):
         pending_tasks = Task.objects.filter(completed=False).count()
         in_progress_tasks = Task.objects.filter(status="In Progress").count()
 
+        completed_ids = Task.objects.filter(completed=True).values("owner_id")
+        pending_ids = Task.objects.filter(status="Pending").values("owner_id")
+        in_progress_ids = Task.objects.filter(status="In Progress").values("owner_id")
         data ={
             "total_users": total_users,
             "total_tasks": total_tasks,
             "completed_tasks": completed_tasks,
             "pending_tasks": pending_tasks,
-            "in_progress_tasks": in_progress_tasks
+            "in_progress_tasks": in_progress_tasks,
+
+            "completed_users": list(User.objects.filter(id__in=completed_ids).values("id", "username")),
+            "pending_users": list(User.objects.filter(id__in=pending_ids).values("id", "username")),
+            "in_progress_users": list(User.objects.filter(id__in=in_progress_ids).values("id", "username")),
         }
         return Response(data)
 
@@ -138,6 +175,10 @@ class SubTaskViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
 
+    @action(detail=False, methods=["get"], url_path="title")
+    def titles(self, request):
+        titles = self.get_queryset().values_list("title", flat=True)
+        return Response(list(titles))
 
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
@@ -187,7 +228,6 @@ class ProjectViewSet(viewsets.ModelViewSet):
             ProjectWithTaskSerializer(project, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
-
 
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
